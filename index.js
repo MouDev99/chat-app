@@ -33,17 +33,22 @@ async function main() {
     });
 
     io.on("connection", async (socket) => {
-        socket.on("chat message", async (msg) => {
+        socket.on("chat message", async (msg, client_offset, callback) => {
             let result;
             try {
                 result = await db.run("INSERT INTO messages (content) VALUES (?)", msg);
             } catch (err) {
-                console.error(err);
+                if (err.errno === 19 /* SQLITE_CONSTRAINT */) {
+                    // the message was already inserted, so we notify the client
+                    callback();
+                } else {
+                    // nothing to do, just let the client retry
+                }
                 return;
             };
-            console.log(result.lastID);
-
             io.emit("chat message", msg, result.lastID);
+            // acknowledge the event
+            callback();
         });
 
         if (!socket.recovered) {
